@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Your DMData API key (use .env in production)
-const API_KEY = process.env.ACCESS_TOKEN || "YOUR_API_KEY_HERE";
+const API_KEY = process.env.ACCESS_TOKEN;
 
 let latestEEW = null;
 

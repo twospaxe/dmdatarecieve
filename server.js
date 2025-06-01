@@ -17,7 +17,7 @@ async function connectWebSocket() {
       {},
       {
         headers: {
-          "x-access-token": ACCESS_TOKEN,
+          "x-access-token": "AKe.KHmztOItfWwPOkSxo2bQoQSyQELq2OG1tWvzvX0_85HQ",
           "Content-Type": "application/json"
         }
       }

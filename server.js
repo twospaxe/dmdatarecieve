@@ -1,77 +1,83 @@
-require("dotenv").config();
-const axios = require("axios");
 const express = require("express");
+const axios = require("axios");
 const WebSocket = require("ws");
 
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-const app = express();
+// Your DMData API key (use .env in production)
+const API_KEY = process.env.ACCESS_TOKEN || "YOUR_API_KEY_HERE";
+
 let latestEEW = null;
 
-async function connectWebSocket() {
+// Start the DMData WebSocket connection
+async function startSocket() {
   try {
-    console.log("🔌 Starting WebSocket connection to DM-DATA...");
+    console.log("Starting socket...");
 
     const response = await axios.post(
-      "https://api.dmdata.jp/v2/socket/start",
-      {},
+      "https://api.dmdata.jp/v2/socket",
+      {
+        classifications: ["telegram.earthquake"],
+        types: ["VXSE51", "VXSE52", "VXSE53"],
+        test: "no",
+        appName: "EEWMonitor",
+        formatMode: "json"
+      },
       {
         headers: {
-          "x-access-token": ACCESS_TOKEN,
-          "Content-Type": "application/json",
-        },
+          "x-access-token": API_KEY,
+          "Content-Type": "application/json"
+        }
       }
     );
 
-    const { websocketUrl } = response.data;
-    const ws = new WebSocket(websocketUrl);
+    const { websocket } = response.data;
+    const ws = new WebSocket(websocket.url, ['dmdata.v2']);
 
     ws.on("open", () => {
-      console.log("✅ Connected to DM-DATA WebSocket.");
+      console.log("✅ WebSocket connected.");
     });
 
     ws.on("message", (data) => {
       try {
-        const message = JSON.parse(data);
-
-        if (message.type === "eew") {
-          latestEEW = message;
-          console.log("🌐 Received EEW update.");
+        const json = JSON.parse(data);
+        if (json.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
+        } else if (json.type === "data" && json.classification === "telegram.earthquake") {
+          latestEEW = json;
+          console.log("📡 EEW update received.");
         }
       } catch (err) {
-        console.error("❌ Error parsing WebSocket message:", err.message);
+        console.error("❌ Message parse error:", err);
       }
     });
 
     ws.on("close", () => {
-      console.warn("⚠️ WebSocket closed. Reconnecting in 5 seconds...");
-      setTimeout(connectWebSocket, 5000);
+      console.warn("⚠️ WebSocket closed. Reconnecting in 5s...");
+      setTimeout(startSocket, 5000);
     });
 
     ws.on("error", (err) => {
-      console.error("🚨 WebSocket error:", err.message);
+      console.error("❌ WebSocket error:", err);
     });
 
   } catch (err) {
     console.error("❌ Failed to start socket:", err.response?.data || err.message);
-    setTimeout(connectWebSocket, 5000);
+    setTimeout(startSocket, 5000);
   }
 }
 
+// Serve the latest EEW data
 app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
   } else {
-    res.status(204).send(); // No EEW available yet
+    res.status(204).send(); // No EEW yet
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("DMDATA EEW Server is running.");
-});
-
 app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-  connectWebSocket();
+  console.log(`🚀 Server running on port ${PORT}`);
+  startSocket();
 });

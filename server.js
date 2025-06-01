@@ -15,22 +15,25 @@ async function startSocket() {
   try {
     console.log("Starting socket...");
 
-    const response = await axios.post(
-      "https://api.dmdata.jp/v2/socket",
-      {
-        classifications: ["telegram.earthquake"],
-        types: ["VXSE51", "VXSE52", "VXSE53"],
-        test: "no",
-        appName: "EEWMonitor",
-        formatMode: "json"
-      },
-      {
-        headers: {
-          "x-access-token": API_KEY,
-          "Content-Type": "application/json"
-        }
-      }
-    );
+    cconst token = Buffer.from(`${API_KEY}:`).toString("base64");
+
+const response = await axios.post(
+  "https://api.dmdata.jp/v2/socket",
+  {
+    classifications: ["telegram.earthquake"],
+    types: ["VXSE51", "VXSE52", "VXSE53"],
+    test: "no",
+    appName: "EEWMonitor",
+    formatMode: "json"
+  },
+  {
+    headers: {
+      "Authorization": `Basic ${token}`,
+      "Content-Type": "application/json"
+    }
+  }
+);
+
 
     const { websocket } = response.data;
     const ws = new WebSocket(websocket.url, ['dmdata.v2']);

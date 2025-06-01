@@ -1,58 +1,60 @@
+require("dotenv").config();
 const axios = require("axios");
 const express = require("express");
 const WebSocket = require("ws");
 
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
-let latestEEW = null;
+const PORT = process.env.PORT || 3000;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+let latestEEW = null;
 
 async function connectWebSocket() {
   try {
-    console.log("Starting socket...");
+    console.log("🔌 Starting WebSocket connection to DM-DATA...");
 
-    const res = await axios.post(
+    const response = await axios.post(
       "https://api.dmdata.jp/v2/socket/start",
       {},
       {
         headers: {
-          "x-access-token": "AKe.KHmztOItfWwPOkSxo2bQoQSyQELq2OG1tWvzvX0_85HQ",
-          "Content-Type": "application/json"
-        }
+          "x-access-token": ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
       }
     );
 
-    const { websocketUrl, socketId } = res.data;
-
+    const { websocketUrl } = response.data;
     const ws = new WebSocket(websocketUrl);
 
     ws.on("open", () => {
-      console.log("Connected to DM-DSS WebSocket");
+      console.log("✅ Connected to DM-DATA WebSocket.");
     });
 
     ws.on("message", (data) => {
       try {
-        const json = JSON.parse(data);
-        if (json.type === "eew") {
-          latestEEW = json;
-          console.log("Received EEW:", json);
+        const message = JSON.parse(data);
+
+        if (message.type === "eew") {
+          latestEEW = message;
+          console.log("🌐 Received EEW update.");
         }
       } catch (err) {
-        console.error("Error parsing message:", err);
+        console.error("❌ Error parsing WebSocket message:", err.message);
       }
     });
 
     ws.on("close", () => {
-      console.warn("WebSocket closed, reconnecting in 5s...");
+      console.warn("⚠️ WebSocket closed. Reconnecting in 5 seconds...");
       setTimeout(connectWebSocket, 5000);
     });
 
     ws.on("error", (err) => {
-      console.error("WebSocket error:", err);
+      console.error("🚨 WebSocket error:", err.message);
     });
+
   } catch (err) {
-    console.error("Failed to start socket:", err.response?.data || err.message);
+    console.error("❌ Failed to start socket:", err.response?.data || err.message);
     setTimeout(connectWebSocket, 5000);
   }
 }
@@ -61,11 +63,15 @@ app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
   } else {
-    res.status(204).send(); // No data yet
+    res.status(204).send(); // No EEW available yet
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("DMDATA EEW Server is running.");
+});
+
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`🚀 Server listening on port ${PORT}`);
   connectWebSocket();
 });

@@ -1,13 +1,15 @@
 {
   "name": "dmdatarecieve",
   "version": "1.0.0",
-  "main": "server.js",
+  "description": "Real-time EEW server using DMDATA WebSocket API",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "axios": "^1.6.8",
-    "express": "^4.18.2",
-    "ws": "^8.15.0"
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ws": "^8.16.0"
   }
 }

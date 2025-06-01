@@ -76,7 +76,7 @@ app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
   } else {
-    res.status(204).send(); // No EEW yet
+    res.status(200).json({ status: "waiting", message: "No EEW data yet" });
   }
 });
 

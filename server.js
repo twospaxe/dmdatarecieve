@@ -15,7 +15,7 @@ async function startSocket() {
   try {
     console.log("Starting socket...");
 
-    cconst token = Buffer.from(`${API_KEY}:`).toString("base64");
+    const token = Buffer.from(`${API_KEY}:`).toString("base64");
 
 const response = await axios.post(
   "https://api.dmdata.jp/v2/socket",

@@ -36,6 +36,7 @@ const response = await axios.post(
 
 
     const { websocket } = response.data;
+    console.log(response.data)
     const ws = new WebSocket(websocket.url, ['dmdata.v2']);
 
     ws.on("open", () => {

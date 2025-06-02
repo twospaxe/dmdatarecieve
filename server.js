@@ -43,19 +43,29 @@ const response = await axios.post(
       console.log("✅ WebSocket connected.");
     });
 
-    ws.on("message", (data) => {
-      try {
-        const json = JSON.parse(data);
-        if (json.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
-        } else if (json.type === "data" && json.classification === "telegram.earthquake") {
-          latestEEW = json;
-          console.log("📡 EEW update received.");
-        }
-      } catch (err) {
-        console.error("❌ Message parse error:", err);
-      }
-    });
+ws.on("message", (data) => {
+  console.log("📨 WebSocket message received:");
+  console.log(data.toString()); // Log raw message for debugging
+
+  try {
+    const json = JSON.parse(data);
+
+    // Respond to ping
+    if (json.type === "ping") {
+      ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
+    }
+
+    // Handle EEW telegrams
+    else if (json.type === "data" && json.classification === "telegram.earthquake") {
+      latestEEW = json;
+      console.log("📡 EEW update received:");
+      console.dir(json, { depth: null, colors: true }); // Log structured data nicely
+    }
+
+  } catch (err) {
+    console.error("❌ JSON parse error:", err);
+  }
+});
 
     ws.on("close", () => {
       console.warn("⚠️ WebSocket closed. Reconnecting in 5s...");

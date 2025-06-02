@@ -21,7 +21,7 @@ const response = await axios.post(
   "https://api.dmdata.jp/v2/socket",
   {
     classifications: ["telegram.earthquake"],
-    types: ["VXSE51", "VXSE52", "VXSE53"],
+    types: ["VXSE45"],
     test: "no",
     appName: "EEWMonitor",
     formatMode: "json"

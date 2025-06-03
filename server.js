@@ -44,7 +44,7 @@ async function startSocket() {
     ws.on("message", (data) => {
       try {
         const json = JSON.parse(data);
-
+console.log(json)
         // Respond to pings
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));

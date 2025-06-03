@@ -5,7 +5,7 @@ const WebSocket = require("ws");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Your DMData API key (use .env in production)
+// DMData API key (set this in your hosting platform's environment variables)
 const API_KEY = process.env.ACCESS_TOKEN;
 
 let latestEEW = null;
@@ -17,55 +17,49 @@ async function startSocket() {
 
     const token = Buffer.from(`${API_KEY}:`).toString("base64");
 
-const response = await axios.post(
-  "https://api.dmdata.jp/v2/socket",
-  {
-    classifications: ["telegram.earthquake"],
-    types: ["VXSE45"],
-    test: "no",
-    appName: "EEWMonitor",
-    formatMode: "json"
-  },
-  {
-    headers: {
-      "Authorization": `Basic ${token}`,
-      "Content-Type": "application/json"
-    }
-  }
-);
-
+    const response = await axios.post(
+      "https://api.dmdata.jp/v2/socket",
+      {
+        classifications: ["telegram.earthquake"],
+        types: ["VXSE45"],
+        test: "no",
+        appName: "EEWMonitor",
+        formatMode: "json"
+      },
+      {
+        headers: {
+          "Authorization": `Basic ${token}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
     const { websocket } = response.data;
-    console.log(response.data)
-    const ws = new WebSocket(websocket.url, ['dmdata.v2']);
+    const ws = new WebSocket(websocket.url, ["dmdata.v2"]);
 
     ws.on("open", () => {
       console.log("✅ WebSocket connected.");
     });
 
-ws.on("message", (data) => {
-  console.log("📨 WebSocket message received:");
-  console.log(data.toString()); // Log raw message for debugging
+    ws.on("message", (data) => {
+      try {
+        const json = JSON.parse(data);
 
-  try {
-    const json = JSON.parse(data);
+        // Respond to pings
+        if (json.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
+        }
 
-    // Respond to ping
-    if (json.type === "ping") {
-      ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
-    }
-
-    // Handle EEW telegrams
-    else if (json._schema && json._schema.type) {
-      latestEEW = json;
-      console.log("📡 EEW update received:");
-      console.dir(json, { depth: null, colors: true }); // Log structured data nicely
-    }
-
-  } catch (err) {
-    console.error("❌ JSON parse error:", err);
-  }
-});
+        // Save EEW telegrams
+        else if (json._schema && json._schema.type) {
+          latestEEW = json;
+          console.log("📡 EEW update received:");
+          console.dir(json, { depth: null, colors: true });
+        }
+      } catch (err) {
+        console.error("❌ JSON parse error:", err);
+      }
+    });
 
     ws.on("close", () => {
       console.warn("⚠️ WebSocket closed. Reconnecting in 5s...");
@@ -82,7 +76,7 @@ ws.on("message", (data) => {
   }
 }
 
-// Serve the latest EEW data
+// Serve the latest EEW data at /eew
 app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
@@ -91,7 +85,15 @@ app.get("/eew", (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   startSocket();
+
+  // 🔁 Self-ping every 4 minutes to prevent sleeping
+  setInterval(() => {
+    axios.get(`http://localhost:${PORT}/eew`)
+      .then(() => console.log("🔁 Self-ping successful"))
+      .catch(err => console.warn("⚠️ Self-ping failed:", err.message));
+  }, 1000 * 60 * 4); // Every 4 minutes
 });

@@ -56,7 +56,7 @@ ws.on("message", (data) => {
     }
 
     // Handle EEW telegrams
-    else if (json.type === "data" && json.classification === "telegram.earthquake") {
+    else if (json._schema && json._schema.type) {
       latestEEW = json;
       console.log("📡 EEW update received:");
       console.dir(json, { depth: null, colors: true }); // Log structured data nicely

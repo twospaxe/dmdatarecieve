@@ -20,7 +20,7 @@ async function startSocket() {
     const response = await axios.post(
       "https://api.dmdata.jp/v2/socket",
       {
-        classifications: ["telegram.earthquake"],
+        classifications: ["eew.forecast"],
         types: ["VXSE45"],
         test: "no",
         appName: "EEWMonitor",

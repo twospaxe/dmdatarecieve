@@ -6,7 +6,7 @@ const zlib = require("zlib");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// DMData API key (set this in your hosting platform's environment variables)
+// DMData API key (from env variables)
 const API_KEY = process.env.ACCESS_TOKEN;
 
 let latestEEW = null;
@@ -14,7 +14,7 @@ let latestEEW = null;
 // Start the DMData WebSocket connection
 async function startSocket() {
   try {
-    console.log("Starting socket...");
+    console.log("🔌 Starting WebSocket...");
 
     const token = Buffer.from(`${API_KEY}:`).toString("base64");
 
@@ -29,7 +29,7 @@ async function startSocket() {
       },
       {
         headers: {
-          "Authorization": `Basic ${token}`,
+          Authorization: `Basic ${token}`,
           "Content-Type": "application/json"
         }
       }
@@ -45,34 +45,51 @@ async function startSocket() {
     ws.on("message", (data) => {
       try {
         const json = JSON.parse(data);
-        console.log("📨 Raw WebSocket Message Received:", json);
 
         // Respond to pings
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
         }
 
-        // Save and decode EEW telegrams
-        else if (json._schema && json._schema.type) {
-          latestEEW = json;
-          console.log("📡 EEW update received (compressed):");
+        // Handle compressed EEW data
+        else if (
+          json.type === "data" &&
+          json.body &&
+          json.encoding === "base64" &&
+          json.compression === "gzip"
+        ) {
+          const compressedBuffer = Buffer.from(json.body, "base64");
 
-          if (json.body && json.compression === "gzip" && json.encoding === "base64") {
-            const compressed = Buffer.from(json.body, "base64");
+          zlib.gunzip(compressedBuffer, (err, decompressedBuffer) => {
+            if (err) {
+              console.error("❌ Decompression failed:", err);
+              return;
+            }
 
-            zlib.gunzip(compressed, (err, result) => {
-              if (err) {
-                console.error("❌ Decompression error:", err);
-              } else {
-                try {
-                  const parsedBody = JSON.parse(result.toString("utf-8"));
-                  console.log("🧾 Parsed EEW body:", parsedBody);
-                } catch (e) {
-                  console.error("❌ JSON parse error:", e);
-                }
+            let decompressedContent = decompressedBuffer.toString("utf-8");
+
+            // Attempt JSON parsing if it's a JSON string
+            try {
+              if (
+                decompressedContent.trim().startsWith("{") ||
+                decompressedContent.trim().startsWith("[")
+              ) {
+                decompressedContent = JSON.parse(decompressedContent);
               }
-            });
-          }
+            } catch {
+              console.warn("⚠️ Decompressed body is not valid JSON.");
+            }
+
+            const { body, compression, encoding, ...rest } = json;
+
+            latestEEW = {
+              ...rest,
+              parsedBody: decompressedContent
+            };
+
+            console.log("📡 EEW update received:");
+            console.dir(latestEEW, { depth: null, colors: true });
+          });
         }
       } catch (err) {
         console.error("❌ JSON parse error:", err);
@@ -87,14 +104,13 @@ async function startSocket() {
     ws.on("error", (err) => {
       console.error("❌ WebSocket error:", err);
     });
-
   } catch (err) {
     console.error("❌ Failed to start socket:", err.response?.data || err.message);
     setTimeout(startSocket, 5000);
   }
 }
 
-// Serve the latest EEW data at /eew
+// Serve the latest EEW data
 app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
@@ -103,12 +119,12 @@ app.get("/eew", (req, res) => {
   }
 });
 
-// Start server
+// Start the server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   startSocket();
 
-  // 🔁 Self-ping every 4 minutes to prevent sleeping
+  // Keep-alive ping to prevent server sleep (useful on services like Replit)
   setInterval(() => {
     axios.get(`http://localhost:${PORT}/eew`)
       .then(() => console.log("🔁 Self-ping successful"))

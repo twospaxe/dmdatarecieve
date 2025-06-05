@@ -21,7 +21,7 @@ async function startSocket() {
       "https://api.dmdata.jp/v2/socket",
       {
         classifications: ["eew.forecast"],
-        types: ["VXSE45"],
+        types: ["VXSE45"], ["VXSE42"],
         test: "no",
         appName: "EEWMonitor",
         formatMode: "json"

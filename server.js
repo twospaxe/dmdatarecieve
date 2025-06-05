@@ -1,6 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const WebSocket = require("ws");
+const zlib = require("zlib");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,7 +22,7 @@ async function startSocket() {
       "https://api.dmdata.jp/v2/socket",
       {
         classifications: ["eew.forecast"],
-      types: ["!VXSE44"],
+        types: ["VXSE45", "VXSE42"],
         test: "no",
         appName: "EEWMonitor",
         formatMode: "json"
@@ -44,17 +45,34 @@ async function startSocket() {
     ws.on("message", (data) => {
       try {
         const json = JSON.parse(data);
-console.log(json)
+        console.log("📨 Raw WebSocket Message Received:", json);
+
         // Respond to pings
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
         }
 
-        // Save EEW telegrams
+        // Save and decode EEW telegrams
         else if (json._schema && json._schema.type) {
           latestEEW = json;
-          console.log("📡 EEW update received:");
-          console.dir(json, { depth: null, colors: true });
+          console.log("📡 EEW update received (compressed):");
+
+          if (json.body && json.compression === "gzip" && json.encoding === "base64") {
+            const compressed = Buffer.from(json.body, "base64");
+
+            zlib.gunzip(compressed, (err, result) => {
+              if (err) {
+                console.error("❌ Decompression error:", err);
+              } else {
+                try {
+                  const parsedBody = JSON.parse(result.toString("utf-8"));
+                  console.log("🧾 Parsed EEW body:", parsedBody);
+                } catch (e) {
+                  console.error("❌ JSON parse error:", e);
+                }
+              }
+            });
+          }
         }
       } catch (err) {
         console.error("❌ JSON parse error:", err);
@@ -95,5 +113,5 @@ app.listen(PORT, () => {
     axios.get(`http://localhost:${PORT}/eew`)
       .then(() => console.log("🔁 Self-ping successful"))
       .catch(err => console.warn("⚠️ Self-ping failed:", err.message));
-  }, 1000 * 60 * 4); // Every 4 minutes
+  }, 1000 * 60 * 4);
 });

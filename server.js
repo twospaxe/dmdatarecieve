@@ -1,7 +1,3 @@
-const dns = require("dns");
-// ✅ Force IPv4 first (FIX #1)
-dns.setDefaultResultOrder("ipv4first");
-
 const express = require("express");
 const axios = require("axios");
 const WebSocket = require("ws");
@@ -40,9 +36,6 @@ async function startSocket() {
     );
 
     const { websocket } = response.data;
-
-    console.log("WS URL:", websocket.url); // helpful debug
-
     const ws = new WebSocket(websocket.url, ["dmdata.v2"]);
 
     ws.on("open", () => {
@@ -52,8 +45,7 @@ async function startSocket() {
     ws.on("message", (data) => {
       try {
         const json = JSON.parse(data);
-        console.log(json);
-
+console.log(json)
         // Respond to pings
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
@@ -76,6 +68,7 @@ async function startSocket() {
 
             let decompressedContent = decompressedBuffer.toString("utf-8");
 
+            // Attempt JSON parsing if it's a JSON string
             try {
               if (
                 decompressedContent.trim().startsWith("{") ||
@@ -111,18 +104,8 @@ async function startSocket() {
     ws.on("error", (err) => {
       console.error("❌ WebSocket error:", err);
     });
-
   } catch (err) {
-    console.error("❌ Failed to start socket:");
-    console.error("message:", err.message);
-    console.error("code:", err.code);
-    console.error("errno:", err.errno);
-
-    if (err.response) {
-      console.error("status:", err.response.status);
-      console.error("data:", err.response.data);
-    }
-
+    console.error("❌ Failed to start socket:", err.response?.data || err.message);
     setTimeout(startSocket, 5000);
   }
 }
@@ -141,9 +124,9 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   startSocket();
 
-  // Keep-alive ping
+  // Keep-alive ping to prevent server sleep (useful on services like Replit)
   setInterval(() => {
-    axios.get(`http://127.0.0.1:${PORT}/eew`)
+    axios.get(`http://localhost:${PORT}/eew`)
       .then(() => console.log("🔁 Self-ping successful"))
       .catch(err => console.warn("⚠️ Self-ping failed:", err.message));
   }, 1000 * 60 * 4);

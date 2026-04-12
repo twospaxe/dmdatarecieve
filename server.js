@@ -1,17 +1,26 @@
+const dns = require("dns");
+dns.setDefaultResultOrder("ipv4first");
+
 const express = require("express");
 const axios = require("axios");
 const WebSocket = require("ws");
 const zlib = require("zlib");
+const https = require("https");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// DMData API key (from env variables)
+// Force IPv4 for axios requests (important for Render)
+const agent = new https.Agent({
+  family: 4
+});
+
+// DMData API key
 const API_KEY = process.env.ACCESS_TOKEN;
 
 let latestEEW = null;
 
-// Start the DMData WebSocket connection
+// Start DMData WebSocket
 async function startSocket() {
   try {
     console.log("🔌 Starting WebSocket...");
@@ -28,6 +37,8 @@ async function startSocket() {
         formatMode: "json"
       },
       {
+        httpsAgent: agent,
+        timeout: 15000,
         headers: {
           Authorization: `Basic ${token}`,
           "Content-Type": "application/json"
@@ -36,23 +47,26 @@ async function startSocket() {
     );
 
     const { websocket } = response.data;
+
+    console.log("🌐 Connecting to DMData WebSocket...");
     const ws = new WebSocket(websocket.url, ["dmdata.v2"]);
 
     ws.on("open", () => {
-      console.log("✅ WebSocket connected.");
+      console.log("✅ WebSocket connected");
     });
 
     ws.on("message", (data) => {
       try {
         const json = JSON.parse(data);
-console.log(json)
-        // Respond to pings
+
+        // Handle ping
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
+          return;
         }
 
         // Handle compressed EEW data
-        else if (
+        if (
           json.type === "data" &&
           json.body &&
           json.encoding === "base64" &&
@@ -62,72 +76,65 @@ console.log(json)
 
           zlib.gunzip(compressedBuffer, (err, decompressedBuffer) => {
             if (err) {
-              console.error("❌ Decompression failed:", err);
+              console.error("❌ Decompression error:", err);
               return;
             }
 
-            let decompressedContent = decompressedBuffer.toString("utf-8");
+            let content = decompressedBuffer.toString("utf8");
 
-            // Attempt JSON parsing if it's a JSON string
             try {
-              if (
-                decompressedContent.trim().startsWith("{") ||
-                decompressedContent.trim().startsWith("[")
-              ) {
-                decompressedContent = JSON.parse(decompressedContent);
+              if (content.trim().startsWith("{") || content.trim().startsWith("[")) {
+                content = JSON.parse(content);
               }
             } catch {
-              console.warn("⚠️ Decompressed body is not valid JSON.");
+              console.warn("⚠️ Decompressed body not valid JSON");
             }
 
             const { body, compression, encoding, ...rest } = json;
 
             latestEEW = {
               ...rest,
-              parsedBody: decompressedContent
+              parsedBody: content
             };
 
-            console.log("📡 EEW update received:");
-            console.dir(latestEEW, { depth: null, colors: true });
+            console.log("📡 EEW update received");
           });
         }
       } catch (err) {
-        console.error("❌ JSON parse error:", err);
+        console.error("❌ Message parse error:", err);
       }
     });
 
     ws.on("close", () => {
-      console.warn("⚠️ WebSocket closed. Reconnecting in 5s...");
-      setTimeout(startSocket, 5000);
+      console.warn("⚠️ WebSocket closed. Reconnecting in 3 seconds...");
+      setTimeout(startSocket, 3000);
     });
 
     ws.on("error", (err) => {
-      console.error("❌ WebSocket error:", err);
+      console.error("❌ WebSocket error:", err.message);
     });
+
   } catch (err) {
     console.error("❌ Failed to start socket:", err.response?.data || err.message);
+    console.log("🔁 Retrying in 5 seconds...");
     setTimeout(startSocket, 5000);
   }
 }
 
-// Serve the latest EEW data
+// API endpoint
 app.get("/eew", (req, res) => {
   if (latestEEW) {
     res.json(latestEEW);
   } else {
-    res.status(200).json({ status: "waiting", message: "No EEW data yet" });
+    res.json({
+      status: "waiting",
+      message: "No EEW data yet"
+    });
   }
 });
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   startSocket();
-
-  // Keep-alive ping to prevent server sleep (useful on services like Replit)
-  setInterval(() => {
-    axios.get(`http://localhost:${PORT}/eew`)
-      .then(() => console.log("🔁 Self-ping successful"))
-      .catch(err => console.warn("⚠️ Self-ping failed:", err.message));
-  }, 1000 * 60 * 4);
 });

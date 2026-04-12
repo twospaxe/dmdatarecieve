@@ -10,20 +10,23 @@ const https = require("https");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Force IPv4 for axios requests (important for Render)
+// Force IPv4 for HTTPS (Render stability)
 const agent = new https.Agent({
   family: 4
 });
 
-// DMData API key
 const API_KEY = process.env.ACCESS_TOKEN;
 
 let latestEEW = null;
+let reconnectTimer = null;
 
-// Start DMData WebSocket
 async function startSocket() {
   try {
     console.log("🔌 Starting WebSocket...");
+
+    if (!API_KEY) {
+      throw new Error("Missing ACCESS_TOKEN env variable");
+    }
 
     const token = Buffer.from(`${API_KEY}:`).toString("base64");
 
@@ -38,7 +41,7 @@ async function startSocket() {
       },
       {
         httpsAgent: agent,
-        timeout: 15000,
+        timeout: 20000,
         headers: {
           Authorization: `Basic ${token}`,
           "Content-Type": "application/json"
@@ -46,10 +49,21 @@ async function startSocket() {
       }
     );
 
+    if (!response.data || !response.data.websocket) {
+      throw new Error(
+        "Invalid DMData response: " + JSON.stringify(response.data)
+      );
+    }
+
     const { websocket } = response.data;
 
-    console.log("🌐 Connecting to DMData WebSocket...");
-    const ws = new WebSocket(websocket.url, ["dmdata.v2"]);
+    console.log("🌐 WS URL:", websocket.url);
+
+    const ws = new WebSocket(websocket.url, {
+      headers: {
+        "User-Agent": "EEWMonitor"
+      }
+    });
 
     ws.on("open", () => {
       console.log("✅ WebSocket connected");
@@ -59,13 +73,11 @@ async function startSocket() {
       try {
         const json = JSON.parse(data);
 
-        // Handle ping
         if (json.type === "ping") {
           ws.send(JSON.stringify({ type: "pong", pingId: json.pingId }));
           return;
         }
 
-        // Handle compressed EEW data
         if (
           json.type === "data" &&
           json.body &&
@@ -83,12 +95,13 @@ async function startSocket() {
             let content = decompressedBuffer.toString("utf8");
 
             try {
-              if (content.trim().startsWith("{") || content.trim().startsWith("[")) {
+              if (
+                content.trim().startsWith("{") ||
+                content.trim().startsWith("[")
+              ) {
                 content = JSON.parse(content);
               }
-            } catch {
-              console.warn("⚠️ Decompressed body not valid JSON");
-            }
+            } catch {}
 
             const { body, compression, encoding, ...rest } = json;
 
@@ -105,13 +118,16 @@ async function startSocket() {
       }
     });
 
-    ws.on("close", () => {
-      console.warn("⚠️ WebSocket closed. Reconnecting in 3 seconds...");
-      setTimeout(startSocket, 3000);
+    ws.on("close", (code, reason) => {
+      console.warn("⚠️ WebSocket closed");
+      console.warn("code:", code);
+      console.warn("reason:", reason?.toString());
+
+      scheduleReconnect();
     });
 
     ws.on("error", (err) => {
-      console.error("❌ WebSocket error:", err.message);
+      console.error("❌ WebSocket error FULL:", err);
     });
 
   } catch (err) {
@@ -122,8 +138,19 @@ async function startSocket() {
     console.error("syscall:", err.syscall);
     console.error("address:", err.address);
 
-    setTimeout(startSocket, 5000);
+    scheduleReconnect();
+  }
 }
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    startSocket();
+  }, 5000);
+
+  console.log("🔁 Reconnecting in 5 seconds...");
 }
 
 // API endpoint
@@ -138,7 +165,6 @@ app.get("/eew", (req, res) => {
   }
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   startSocket();

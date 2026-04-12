@@ -115,10 +115,15 @@ async function startSocket() {
     });
 
   } catch (err) {
-    console.error("❌ Failed to start socket:", err.response?.data || err.message);
-    console.log("🔁 Retrying in 5 seconds...");
+    console.error("❌ Failed to start socket FULL DEBUG:");
+    console.error("code:", err.code);
+    console.error("message:", err.message);
+    console.error("errno:", err.errno);
+    console.error("syscall:", err.syscall);
+    console.error("address:", err.address);
+
     setTimeout(startSocket, 5000);
-  }
+}
 }
 
 // API endpoint
